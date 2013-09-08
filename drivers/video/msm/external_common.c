@@ -129,6 +129,7 @@ EXPORT_SYMBOL(hdmi_common_supported_video_mode_lut);
 
 struct msm_hdmi_mode_timing_info
 	hdmi_mhl_supported_video_mode_lut[HDMI_VFRMT_MAX] = {
+	VFRMT_NOT_SUPPORTED(HDMI_VFRMT_UNKNOWN),
 	HDMI_VFRMT_640x480p60_4_3_TIMING,
 	VFRMT_NOT_SUPPORTED(HDMI_VFRMT_720x480p60_4_3),
 	VFRMT_NOT_SUPPORTED(HDMI_VFRMT_720x480p60_16_9),
@@ -248,10 +249,12 @@ static ssize_t hdmi_common_wta_vendor_name(struct device *dev,
 {
 	uint8 *s = (uint8 *) buf;
 	uint8 *d = external_common_state->spd_vendor_name;
+	ssize_t sz;
 	ssize_t ret = strnlen(buf, PAGE_SIZE);
 	ret = (ret > 8) ? 8 : ret;
 
-	memset(external_common_state->spd_vendor_name, 0, 8);
+	sz = sizeof(external_common_state->spd_vendor_name);
+	memset(external_common_state->spd_vendor_name, 0, sz);
 	while (*s) {
 		if (*s & 0x60 && *s ^ 0x7f) {
 			*d = *s;
@@ -265,6 +268,7 @@ static ssize_t hdmi_common_wta_vendor_name(struct device *dev,
 
 		d++;
 	}
+	external_common_state->spd_vendor_name[sz - 1] = 0;
 
 	DEV_DBG("%s: '%s'\n", __func__,
 			external_common_state->spd_vendor_name);
@@ -289,9 +293,11 @@ static ssize_t hdmi_common_wta_product_description(struct device *dev,
 	uint8 *s = (uint8 *) buf;
 	uint8 *d = external_common_state->spd_product_description;
 	ssize_t ret = strnlen(buf, PAGE_SIZE);
+	ssize_t sz;
 	ret = (ret > 16) ? 16 : ret;
 
-	memset(external_common_state->spd_product_description, 0, 16);
+	sz = sizeof(external_common_state->spd_product_description);
+	memset(external_common_state->spd_product_description, 0, sz);
 	while (*s) {
 		if (*s & 0x60 && *s ^ 0x7f) {
 			*d = *s;
@@ -305,6 +311,7 @@ static ssize_t hdmi_common_wta_product_description(struct device *dev,
 
 		d++;
 	}
+	external_common_state->spd_product_description[sz - 1] = 0;
 
 	DEV_DBG("%s: '%s'\n", __func__,
 			external_common_state->spd_product_description);
@@ -530,8 +537,15 @@ static ssize_t hdmi_msm_wta_cec_frame(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
 	int i;
-	int retry = ((struct hdmi_msm_cec_msg *) buf)->retransmit;
+	struct hdmi_msm_cec_msg *msg;
+	int retry;
 
+	msg = (struct hdmi_msm_cec_msg *) buf;
+	retry = msg->retransmit;
+	if (msg->frame_size > CEC_MAX_OPERAND_SIZE) {
+		pr_err("%s: cec msg too large\n", __func__);
+		return -EINVAL;
+	}
 	for (i = 0; i < RETRANSMIT_MAX_NUM; i++) {
 		hdmi_msm_cec_msg_send((struct hdmi_msm_cec_msg *) buf);
 		if (hdmi_msm_state->cec_frame_wr_status
@@ -764,7 +778,7 @@ static ssize_t hdmi_common_rda_spkr_alloc_data_block(struct device *dev,
 	return ret;
 }
 
-static DEVICE_ATTR(video_mode, S_IRUGO | S_IWUSR,
+static DEVICE_ATTR(video_mode, S_IRUGO | S_IWUSR | S_IWGRP,
 	external_common_rda_video_mode, external_common_wta_video_mode);
 static DEVICE_ATTR(video_mode_str, S_IRUGO, external_common_rda_video_mode_str,
 	NULL);
@@ -772,7 +786,7 @@ static DEVICE_ATTR(connected, S_IRUGO, external_common_rda_connected, NULL);
 static DEVICE_ATTR(hdmi_mode, S_IRUGO, external_common_rda_hdmi_mode, NULL);
 #ifdef CONFIG_FB_MSM_HDMI_COMMON
 static DEVICE_ATTR(edid_modes, S_IRUGO, hdmi_common_rda_edid_modes, NULL);
-static DEVICE_ATTR(hpd, S_IRUGO | S_IWUSR, hdmi_common_rda_hpd,
+static DEVICE_ATTR(hpd, S_IRUGO | S_IWUSR | S_IWGRP, hdmi_common_rda_hpd,
 	hdmi_common_wta_hpd);
 static DEVICE_ATTR(hdcp, S_IRUGO, hdmi_common_rda_hdcp, NULL);
 static DEVICE_ATTR(pa, S_IRUGO,
@@ -790,8 +804,8 @@ static DEVICE_ATTR(3d_present, S_IRUGO, hdmi_common_rda_3d_present, NULL);
 static DEVICE_ATTR(hdcp_present, S_IRUGO, hdmi_common_rda_hdcp_present, NULL);
 #endif
 #ifdef CONFIG_FB_MSM_HDMI_3D
-static DEVICE_ATTR(format_3d, S_IRUGO | S_IWUSR, hdmi_3d_rda_format_3d,
-	hdmi_3d_wta_format_3d);
+static DEVICE_ATTR(format_3d, S_IRUGO | S_IWUSR | S_IWGRP,
+	hdmi_3d_rda_format_3d, hdmi_3d_wta_format_3d);
 #endif
 static DEVICE_ATTR(hdmi_primary, S_IRUGO, hdmi_common_rda_hdmi_primary, NULL);
 static DEVICE_ATTR(audio_data_block, S_IRUGO, hdmi_common_rda_audio_data_block,
@@ -2043,7 +2057,7 @@ bool hdmi_common_get_video_format_from_drv_data(struct msm_fb_data_type *mfd)
 		case 1280:
 			if (mfd->var_yres == 1024)
 				format = HDMI_VFRMT_1280x1024p60_5_4;
-			else if (mfd->var_frame_rate == 50000)
+			else if (mfd->var_frame_rate == 50)
 				format = HDMI_VFRMT_1280x720p50_16_9;
 			else
 				format = HDMI_VFRMT_1280x720p60_16_9;
@@ -2059,13 +2073,13 @@ bool hdmi_common_get_video_format_from_drv_data(struct msm_fb_data_type *mfd)
 			if (mfd->var_yres == 540) {/* interlaced */
 				format = HDMI_VFRMT_1920x1080i60_16_9;
 			} else if (mfd->var_yres == 1080) {
-				if (mfd->var_frame_rate == 50000)
+				if (mfd->var_frame_rate == 50)
 					format = HDMI_VFRMT_1920x1080p50_16_9;
-				else if (mfd->var_frame_rate == 24000)
+				else if (mfd->var_frame_rate == 24)
 					format = HDMI_VFRMT_1920x1080p24_16_9;
-				else if (mfd->var_frame_rate == 25000)
+				else if (mfd->var_frame_rate == 25)
 					format = HDMI_VFRMT_1920x1080p25_16_9;
-				else if (mfd->var_frame_rate == 30000)
+				else if (mfd->var_frame_rate == 30)
 					format = HDMI_VFRMT_1920x1080p30_16_9;
 				else
 					format = HDMI_VFRMT_1920x1080p60_16_9;
@@ -2141,7 +2155,7 @@ void hdmi_common_init_panel_info(struct msm_panel_info *pinfo)
 	pinfo->xres = timing->active_h;
 	pinfo->yres = timing->active_v;
 	pinfo->clk_rate = timing->pixel_freq*1000;
-	pinfo->frame_rate = 60;
+	pinfo->frame_rate = timing->refresh_rate/1000;
 
 	pinfo->lcdc.h_back_porch = timing->back_porch_h;
 	pinfo->lcdc.h_front_porch = timing->front_porch_h;

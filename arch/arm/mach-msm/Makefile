@@ -23,6 +23,9 @@ endif
 
 obj-y += acpuclock.o
 obj-$(CONFIG_ARCH_MSM_KRAIT) += acpuclock-krait.o
+ifdef CONFIG_ARCH_MSM_KRAIT
+obj-$(CONFIG_DEBUG_FS) += acpuclock-krait-debug.o
+endif
 obj-$(CONFIG_ARCH_MSM7X27) += acpuclock-7627.o clock-pll.o
 obj-$(CONFIG_ARCH_MSM_SCORPION) += pmu.o
 obj-$(CONFIG_ARCH_MSM_SCORPIONMP) += perf_event_msm_l2.o
@@ -396,3 +399,5 @@ endif
 obj-$(CONFIG_MSM_CPU_PWRCTL) +=  msm_cpu_pwrctl.o
 
 obj-$(CONFIG_CPU_FREQ_MSM) += cpufreq.o
+
+obj-$(CONFIG_ARCH_RANDOM) += early_random.o
